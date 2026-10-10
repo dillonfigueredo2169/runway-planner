@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Runway Planner</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#f5f2ec; --card:#fffdf9; --ink:#1d1b18; --muted:#6b655c; --line:#e3ddd2;
+    --accent:#c2581d; --accent-soft:#f6e3d6; --good:#2f7d4f; --good-soft:#dcefe3;
+    --bad:#b3261e; --bad-soft:#f8dedb; --warn:#9a6a00; --warn-soft:#f6ebc9;
+    --band:#c2581d; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 16px 80px}
+  header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+  h1{font-size:34px;letter-spacing:-.02em;margin:0;line-height:1.1}
+  h1 span{color:var(--accent)}
+  .tag{color:var(--muted);margin:6px 0 0;max-width:560px}
+  .badge{font-size:13px;padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:var(--card);white-space:nowrap}
+  .badge.on{background:var(--good-soft);border-color:#b7dbc4;color:var(--good)}
+  .badge.off{background:var(--warn-soft);border-color:#e8d89d;color:var(--warn)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:18px}
+  .step{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:4px}
+  h2{margin:0 0 14px;font-size:21px}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--ink);background:var(--ink);color:#fff;padding:10px 16px;font-weight:600}
+  button.ghost{background:transparent;color:var(--ink)}
+  button:disabled{opacity:.5;cursor:wait}
+  .drop{flex:1;min-width:240px;border:2px dashed var(--line);border-radius:12px;padding:18px;text-align:center;color:var(--muted);cursor:pointer}
+  .drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
+  .tile{border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .tile .k{font-size:13px;color:var(--muted)}
+  .tile .v{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{font-size:12px;padding:2px 8px;border-radius:999px;font-weight:600}
+  .pill.income{background:var(--good-soft);color:var(--good)}
+  .pill.bill{background:var(--accent-soft);color:var(--accent)}
+  .pill.spending{background:#ece8e1;color:var(--muted)}
+  .pill.ignore,.pill.other_in{background:#eee;color:#888}
+  details summary{cursor:pointer;color:var(--muted);margin-top:8px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media (max-width:760px){.grid2{grid-template-columns:1fr}}
+  .bal{display:flex;align-items:center;border:1px solid var(--line);border-radius:10px;padding:0 10px;background:#fff}
+  .bal input{border:0;outline:0;font:inherit;width:90px;padding:9px 4px;font-variant-numeric:tabular-nums}
+  .results{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:16px 0}
+  .res{border:2px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;background:#fff}
+  .res.sel{border-color:var(--ink)}
+  .res .start{color:var(--muted);font-size:14px}
+  .res .risk{font-size:38px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
+  .res.bad .risk{color:var(--bad)} .res.mid .risk{color:var(--warn)} .res.ok .risk{color:var(--good)}
+  .res .sub{font-size:13px;color:var(--muted)}
+  .chartbox{position:relative;height:320px}
+  .msg{background:var(--accent-soft);border-radius:12px;padding:16px 18px;font-size:17px;white-space:pre-wrap}
+  .src{font-size:12px;color:var(--muted);margin-top:6px}
+  tr.best td{background:var(--good-soft);font-weight:600}
+  .hidden{display:none}
+  .err{color:var(--bad);margin-top:10px}
+  .legend{font-size:13px;color:var(--muted);margin-top:8px}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-right-color:transparent;border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Run<span>way</span></h1>
+      <p class="tag">For people whose paychecks change every week. Upload your bank export and see the odds your money runs out before your bills are paid, before it happens.</p>
+    </div>
+    <span id="aiBadge" class="badge">Checking AI…</span>
+  </header>
+
+  <!-- STEP 1 -->
+  <section class="card">
+    <div class="step">Step 1</div>
+    <h2>Bring in your bank history</h2>
+    <div class="row">
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept=".csv,text/csv" hidden>
+        <strong>Drop a bank CSV here</strong> or click to choose a file<br>
+        <small>Any bank's export. Messy is fine. The AI sorts it out.</small>
+      </label>
+      <button class="ghost" id="sampleBtn">Use sample: KC construction worker</button>
+    </div>
+    <div id="err1" class="err"></div>
+
+    <div id="profile" class="hidden">
+      <div class="tiles">
+        <div class="tile"><div class="k">Transactions read</div><div class="v" id="tTx"></div></div>
+        <div class="tile"><div class="k">Average weekly pay</div><div class="v" id="tAvg"></div></div>
+        <div class="tile"><div class="k">Range of weekly pay</div><div class="v" id="tRange"></div></div>
+        <div class="tile"><div class="k">Weeks with $0 pay</div><div class="v" id="tZero"></div></div>
+        <div class="tile"><div class="k">Everyday spending</div><div class="v" id="tSpend"></div></div>
+      </div>
+      <div class="src" id="labelSrc"></div>
+      <div class="grid2" style="margin-top:12px">
+        <div>
+          <h3 style="margin:4px 0 8px;font-size:16px">Weekly take-home pay, past year</h3>
+          <div class="chartbox" style="height:220px"><canvas id="incomeChart"></canvas></div>
+        </div>
+        <div>
+          <h3 style="margin:4px 0 8px;font-size:16px">Monthly bills found</h3>
+          <table><thead><tr><th>Bill</th><th class="num">Due day</th><th class="num">Amount</th></tr></thead>
+            <tbody id="billRows"></tbody></table>
+        </div>
+      </div>
+      <details><summary>See how every transaction was sorted</summary>
+        <table style="margin-top:8px"><thead><tr><th>Bank description</th><th>Sorted as</th><th>Name</th><th class="num">Count</th></tr></thead>
+          <tbody id="groupRows"></tbody></table>
+      </details>
+    </div>
+  </section>
+
+  <!-- STEP 2 -->
+  <section class="card hidden" id="step2">
+    <div class="step">Step 2</div>
+    <h2>How much is in checking? Compare a few amounts</h2>
+    <div class="row" id="balRow">
+      <div class="bal">$<input type="number" value="1000" min="0" step="100"></div>
+      <div class="bal">$<input type="number" value="1800" min="0" step="100"></div>
+      <div class="bal">$<input type="number" value="2000" min="0" step="100"></div>
+      <div class="bal">$<input type="number" value="5000" min="0" step="100"></div>
+      <button id="simBtn">Run 10,000 futures</button>
+    </div>
+    <div id="err2" class="err"></div>
+    <div id="simOut" class="hidden">
+      <div class="results" id="resCards"></div>
+      <h3 style="margin:8px 0;font-size:16px" id="fanTitle"></h3>
+      <div class="chartbox"><canvas id="fanChart"></canvas></div>
+      <div class="legend">Dark line: typical future. Shaded bands: middle 50% and 90% of all 10,000 futures. Red line: $0.</div>
+    </div>
+  </section>
+
+  <!-- STEP 3 -->
+  <section class="card hidden" id="step3">
+    <div class="step">Step 3</div>
+    <h2>Find me a plan</h2>
+    <p style="margin-top:-6px;color:var(--muted)">The AI runs the simulation itself, testing spending cuts and extra income until the risk of going below $0 is 5% or less, then picks the easiest option.</p>
+    <button id="planBtn">Find the easiest safe plan</button>
+    <div id="err3" class="err"></div>
+    <div id="planOut" class="hidden" style="margin-top:16px">
+      <div class="msg" id="planMsg"></div>
+      <div class="src" id="planSrc"></div>
+      <div class="grid2" style="margin-top:16px">
+        <div>
+          <h3 style="margin:4px 0 8px;font-size:16px">Options it tested</h3>
+          <table><thead><tr><th class="num">Cut spending /wk</th><th class="num">Extra income /wk</th><th class="num">Risk</th></tr></thead>
+            <tbody id="triedRows"></tbody></table>
+        </div>
+        <div>
+          <h3 style="margin:4px 0 8px;font-size:16px">Before vs. after the plan</h3>
+          <div class="chartbox" style="height:260px"><canvas id="cmpChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const money = v => (v < 0 ? "-$" : "$") + Math.abs(Math.round(v)).toLocaleString();
+const pct = p => (p < 0.005 && p > 0 ? "<1" : Math.round(p * 100)) + "%";
+const short = d => new Date(d + "T12:00:00").toLocaleDateString(undefined, {month: "short", day: "numeric"});
+let session = null, sims = [], selected = 0, charts = {};
+
+function draw(id, cfg){ charts[id]?.destroy(); charts[id] = new Chart($(id), cfg); }
+function busy(btn, on, label){ btn.disabled = on; btn.innerHTML = on ? '<span class="spin"></span>' + label : btn.dataset.label; }
+document.querySelectorAll("button").forEach(b => b.dataset.label = b.innerHTML);
+
+fetch("/health").then(r => r.json()).then(h => {
+  const b = $("#aiBadge");
+  if (h.ai === "akamai-inference") { b.className = "badge on"; b.textContent = "AI: Akamai Cloud inference"; }
+  else { b.className = "badge off"; b.textContent = "AI offline: using rules"; }
+}).catch(() => {});
+
+// ---------- Step 1 ----------
+async function analyze(form, btn){
+  $("#err1").textContent = "";
+  if (btn) busy(btn, true, "AI is reading your transactions…");
+  try {
+    const r = await fetch("/api/analyze", {method: "POST", body: form});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "Couldn't read that file");
+    session = d.session; showProfile(d);
+  } catch (e) { $("#err1").textContent = e.message; }
+  if (btn) busy(btn, false);
+}
+$("#sampleBtn").onclick = e => { const f = new FormData(); f.append("sample", "1"); analyze(f, e.target); };
+$("#file").onchange = e => { const f = new FormData(); f.append("file", e.target.files[0]); analyze(f, $("#sampleBtn")); };
+const drop = $("#drop");
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over");
+  const f = new FormData(); f.append("file", e.dataTransfer.files[0]); analyze(f, $("#sampleBtn")); };
+
+function showProfile(d){
+  $("#profile").classList.remove("hidden"); $("#step2").classList.remove("hidden");
+  const s = d.income_stats;
+  $("#tTx").textContent = d.transactions.toLocaleString();
+  $("#tAvg").textContent = money(s.avg);
+  $("#tRange").textContent = money(s.min) + "–" + money(s.max);
+  $("#tZero").textContent = s.zero_weeks;
+  $("#tSpend").textContent = money(d.weekly_spend) + "/wk";
+  $("#labelSrc").textContent = (d.label_source === "ai" ? "Sorted by AI (Akamai Cloud inference)" : "Sorted by built-in rules")
+    + ` · ${short(d.date_range[0])}, ${d.date_range[0].slice(0,4)} to ${short(d.date_range[1])}, ${d.date_range[1].slice(0,4)}`;
+  $("#billRows").innerHTML = d.bills.map(b => `<tr><td>${b.name}</td><td class="num">${b.day_of_month}</td><td class="num">${money(b.amount)}</td></tr>`).join("")
+    || `<tr><td colspan="3">No monthly bills detected</td></tr>`;
+  $("#groupRows").innerHTML = d.groups.map(g => `<tr><td>${g.example}</td><td><span class="pill ${g.category}">${g.category}</span></td><td>${g.name}</td><td class="num">${g.count}</td></tr>`).join("");
+  const inc = d.weekly_income;
+  draw("#incomeChart", {type: "bar",
+    data: {labels: inc.map(w => short(w[0])), datasets: [{data: inc.map(w => w[1]),
+      backgroundColor: inc.map(w => w[1] === 0 ? "#b3261e" : "#c2581d"), borderRadius: 2}]},
+    options: {maintainAspectRatio: false, plugins: {legend: {display: false},
+      tooltip: {callbacks: {label: c => money(c.raw)}}},
+      scales: {x: {ticks: {maxTicksLimit: 8}, grid: {display: false}}, y: {ticks: {callback: v => money(v)}}}}});
+  $("#simOut").classList.add("hidden"); $("#step3").classList.add("hidden");
+}
+
+// ---------- Step 2 ----------
+$("#simBtn").onclick = async e => {
+  $("#err2").textContent = "";
+  const balances = [...document.querySelectorAll("#balRow input")].map(i => +i.value).filter(v => v >= 0 && !isNaN(v));
+  busy(e.target, true, "Simulating…");
+  try {
+    const r = await fetch("/api/simulate", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({session, balances})});
+    const d = await r.json(); if (!r.ok) throw new Error(d.detail);
+    sims = d.results;
+    selected = sims.findIndex(s => s.shortfall_probability > 0.05); if (selected < 0) selected = 0;
+    renderSims(); $("#simOut").classList.remove("hidden"); $("#step3").classList.remove("hidden");
+    $("#planOut").classList.add("hidden");
+  } catch (err) { $("#err2").textContent = err.message; }
+  busy(e.target, false);
+};
+
+function level(p){ return p > 0.10 ? "bad" : p > 0.05 ? "mid" : "ok"; }
+function renderSims(){
+  $("#resCards").innerHTML = sims.map((s, i) => {
+    const w = s.most_likely_shortfall;
+    return `<div class="res ${level(s.shortfall_probability)} ${i === selected ? "sel" : ""}" data-i="${i}">
+      <div class="start">Starting with ${money(s.start_balance)}</div>
+      <div class="risk">${pct(s.shortfall_probability)}</div>
+      <div class="sub">chance of going below $0 in ${s.weeks} weeks</div>
+      <div class="sub" style="margin-top:6px">${w ? "⚠ Watch the week of " + short(w.date) : "Lowest balance (worst 5%): " + money(s.worst5_low_point)}</div>
+    </div>`; }).join("");
+  document.querySelectorAll(".res").forEach(el => el.onclick = () => { selected = +el.dataset.i; renderSims(); });
+  fan("#fanChart", sims[selected]);
+  $("#fanTitle").textContent = `10,000 possible futures starting at ${money(sims[selected].start_balance)}`;
+  $("#planBtn").innerHTML = $("#planBtn").dataset.label = `Find the easiest safe plan for ${money(sims[selected].start_balance)}`;
+}
+
+function fan(id, s, extra){
+  const L = s.week_labels.map(short), f = s.fan;
+  const ds = [
+    {data: f.p5, borderWidth: 0, pointRadius: 0, fill: false},
+    {data: f.p95, borderWidth: 0, pointRadius: 0, fill: "-1", backgroundColor: "rgba(194,88,29,.13)"},
+    {data: f.p25, borderWidth: 0, pointRadius: 0, fill: false},
+    {data: f.p75, borderWidth: 0, pointRadius: 0, fill: "-1", backgroundColor: "rgba(194,88,29,.28)"},
+    {data: f.p50, borderColor: "#1d1b18", borderWidth: 2.5, pointRadius: 0, label: "Typical"},
+    {data: L.map(() => 0), borderColor: "#b3261e", borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0},
+  ];
+  draw(id, {type: "line", data: {labels: L, datasets: ds},
+    options: {maintainAspectRatio: false, interaction: {mode: "index", intersect: false},
+      plugins: {legend: {display: false}, tooltip: {filter: c => c.datasetIndex === 4 || c.datasetIndex === 0,
+        callbacks: {label: c => (c.datasetIndex === 4 ? "Typical: " : "Bad case (worst 5%): ") + money(c.raw)}}},
+      scales: {y: {ticks: {callback: v => money(v)}}, x: {ticks: {maxTicksLimit: 9}, grid: {display: false}}}}});
+}
+
+// ---------- Step 3 ----------
+$("#planBtn").onclick = async e => {
+  $("#err3").textContent = "";
+  const s = sims[selected];
+  busy(e.target, true, "AI is testing options with the simulator…");
+  try {
+    const r = await fetch("/api/plan", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({session, start_balance: s.start_balance})});
+    const d = await r.json(); if (!r.ok) throw new Error(d.detail);
+    $("#planOut").classList.remove("hidden");
+    $("#planMsg").textContent = d.message;
+    $("#planSrc").textContent = d.source === "ai"
+      ? `Written by AI on Akamai Cloud after running the simulator ${d.tried.length - 1} times`
+      : "Built-in planner (AI offline)";
+    const rec = d.recommended;
+    $("#triedRows").innerHTML = d.tried.map((t, i) => {
+      const best = t.cut_weekly_spend === rec.cut_weekly_spend && t.extra_weekly_income === rec.extra_weekly_income && i > 0;
+      return `<tr class="${best ? "best" : ""}"><td class="num">${i === 0 ? "No change" : money(t.cut_weekly_spend)}</td>
+        <td class="num">${i === 0 ? "" : money(t.extra_weekly_income)}</td><td class="num">${pct(t.shortfall_probability)}</td></tr>`; }).join("");
+    const a = s, b = d.recommended_full;
+    draw("#cmpChart", {type: "line", data: {labels: a.week_labels.map(short), datasets: [
+      {label: "Today: bad case", data: a.fan.p5, borderColor: "#b3261e", borderWidth: 2, pointRadius: 0},
+      {label: "With plan: bad case", data: b.fan.p5, borderColor: "#2f7d4f", borderWidth: 2.5, pointRadius: 0},
+      {label: "$0", data: a.week_labels.map(() => 0), borderColor: "#888", borderDash: [5, 4], borderWidth: 1, pointRadius: 0}]},
+      options: {maintainAspectRatio: false, plugins: {legend: {labels: {boxWidth: 12, filter: i => i.datasetIndex < 2}},
+        tooltip: {callbacks: {label: c => c.dataset.label + ": " + money(c.raw)}}},
+        scales: {y: {ticks: {callback: v => money(v)}}, x: {ticks: {maxTicksLimit: 6}, grid: {display: false}}}}});
+  } catch (err) { $("#err3").textContent = err.message; }
+  busy(e.target, false);
+};
+</script>
+</body>
+</html>
