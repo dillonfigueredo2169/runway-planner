@@ -40,6 +40,84 @@ def _season_pool(history: list[tuple[int, float]], month: int) -> np.ndarray:
     return pool
 
 
+def search_extra_weekly_income(
+    profile: Profile,
+    start_balance: float,
+    target_balance: float,
+    target_probability: float = 0.80,
+    start_date: dt.date | None = None,
+    weeks: int = 16,
+    n: int = 10_000,
+    max_extra: float = 2_000.0,
+    seed: int = 7,
+) -> dict:
+    """Find the smallest extra weekly income that reaches a target
+    ending balance with at least the requested simulated probability.
+    """
+    if not 0 < target_probability < 1:
+        raise ValueError("target_probability must be between 0 and 1.")
+
+    if weeks < 1 or n < 1:
+        raise ValueError("weeks and n must be positive.")
+
+    def evaluate(extra: float) -> float:
+        result = simulate(
+            profile=profile,
+            start_balance=start_balance,
+            start_date=start_date,
+            weeks=weeks,
+            n=n,
+            extra_weekly_income=extra,
+            seed=seed,
+            target_balance=target_balance,
+        )
+        return result["goal_probability"]
+
+    # Check whether the goal is reachable within the search range.
+    base_probability = evaluate(0.0)
+    max_probability = evaluate(max_extra)
+
+    if base_probability >= target_probability:
+        return {
+            "extra_weekly_income": 0.0,
+            "goal_probability": base_probability,
+            "target_balance": target_balance,
+            "target_probability": target_probability,
+            "message": "Goal already meets the desired probability.",
+        }
+
+    if max_probability < target_probability:
+        return {
+            "extra_weekly_income": None,
+            "goal_probability_at_max": max_probability,
+            "max_extra_tested": max_extra,
+            "target_balance": target_balance,
+            "target_probability": target_probability,
+            "message": "Goal not reached within the search range.",
+        }
+
+    # Binary search for the minimum extra weekly income.
+    low, high = 0.0, max_extra
+
+    for _ in range(25):
+        mid = (low + high) / 2
+        probability = evaluate(mid)
+
+        if probability >= target_probability:
+            high = mid
+        else:
+            low = mid
+
+    extra = round(high, 2)
+
+    return {
+        "extra_weekly_income": extra,
+        "goal_probability": evaluate(extra),
+        "target_balance": target_balance,
+        "target_probability": target_probability,
+        "message": "Search completed.",
+    }
+
 def simulate(
     profile: Profile,
     start_balance: float,
@@ -49,6 +127,7 @@ def simulate(
     cut_weekly_spend: float = 0.0,
     extra_weekly_income: float = 0.0,
     seed: int = 7,
+    target_balance: float | None = None,
 ) -> dict:
     rng = np.random.default_rng(seed)
     start_date = start_date or dt.date.today()
@@ -90,6 +169,12 @@ def simulate(
         risky_week = {"week": wk, "date": week_labels[wk]}
 
     return {
+        "target_balance": target_balance,
+        "goal_probability": (
+            round(float((bal >= target_balance).mean()), 4)
+            if target_balance is not None
+            else None
+        )
         "start_balance": start_balance,
         "cut_weekly_spend": cut_weekly_spend,
         "extra_weekly_income": extra_weekly_income,
