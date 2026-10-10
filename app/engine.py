@@ -108,7 +108,7 @@ def search_extra_weekly_income(
         else:
             low = mid
 
-    extra = round(high, 2)
+    extra = float(np.ceil(high * 100) / 100)   # round UP to the cent so the goal is still met
 
     return {
         "extra_weekly_income": extra,
@@ -174,7 +174,7 @@ def simulate(
             round(float((bal >= target_balance).mean()), 4)
             if target_balance is not None
             else None
-        )
+        ),
         "start_balance": start_balance,
         "cut_weekly_spend": cut_weekly_spend,
         "extra_weekly_income": extra_weekly_income,
