@@ -53,8 +53,21 @@ def _find(headers: list[str], *keys: str) -> str | None:
     return None
 
 
+def _skip_preamble(text: str) -> str:
+    """Some banks put summary lines (account name, balances) above the real header.
+    Start reading at the first line that looks like a header: it mentions a date
+    and an amount/debit/credit column."""
+    lines = text.lstrip("﻿").splitlines()
+    for i, line in enumerate(lines[:30]):
+        low = line.lower()
+        if "date" in low and any(w in low for w in ("amount", "debit", "credit", "withdrawal", "deposit")) \
+                and ("," in line or "\t" in line):
+            return "\n".join(lines[i:])
+    return "\n".join(lines)
+
+
 def read_transactions(text: str) -> list[dict]:
-    rows = list(csv.DictReader(io.StringIO(text.lstrip("﻿"))))
+    rows = list(csv.DictReader(io.StringIO(_skip_preamble(text))))
     if not rows:
         raise ValueError("The file has no rows.")
     headers = list(rows[0].keys())
