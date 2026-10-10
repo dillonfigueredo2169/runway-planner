@@ -189,7 +189,11 @@ async function analyze(form, btn){
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || "Couldn't read that file");
     session = d.session; showProfile(d);
-  } catch (e) { $("#err1").textContent = e.message; }
+  } catch (e) {
+    $("#err1").textContent = e.message;
+    // hide results from a previous file so they aren't mistaken for this one
+    ["#profile", "#step2", "#step3"].forEach(s => $(s).classList.add("hidden"));
+  }
   if (btn) busy(btn, false);
 }
 $("#sampleBtn").onclick = e => { const f = new FormData(); f.append("sample", "1"); analyze(f, e.target); };
