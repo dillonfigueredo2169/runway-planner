@@ -208,7 +208,8 @@ function showProfile(d){
   $("#tRange").textContent = money(s.min) + "–" + money(s.max);
   $("#tZero").textContent = s.zero_weeks;
   $("#tSpend").textContent = money(d.weekly_spend) + "/wk";
-  $("#labelSrc").textContent = (d.label_source === "ai" ? "Sorted by AI (Akamai Cloud inference)" : "Sorted by built-in rules")
+  $("#labelSrc").textContent = (d.label_source === "ai" ? "Sorted by AI (Akamai Cloud inference)"
+      : "Sorted by built-in rules" + (d.label_note ? " (AI issue: " + d.label_note.slice(0, 140) + ")" : ""))
     + ` · ${short(d.date_range[0])}, ${d.date_range[0].slice(0,4)} to ${short(d.date_range[1])}, ${d.date_range[1].slice(0,4)}`;
   $("#billRows").innerHTML = d.bills.map(b => `<tr><td>${b.name}</td><td class="num">${b.day_of_month}</td><td class="num">${money(b.amount)}</td></tr>`).join("")
     || `<tr><td colspan="3">No monthly bills detected</td></tr>`;

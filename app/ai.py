@@ -43,15 +43,23 @@ def _json_from(text: str):
 
 
 # ---------------- Job 1: label transactions ----------------
+LAST_AI_ERROR = {"label": None, "plan": None}   # shown on /debug/ai to explain fallbacks
+
+
 def label_groups(groups: dict[str, dict]) -> dict[str, dict] | None:
     c = client()
     if not c:
+        LAST_AI_ERROR["label"] = "no API key set"
         return None
+    # Give each pile a short id (g1, g2, ...). The AI only has to echo the id back,
+    # which it gets right far more reliably than a long bank description.
+    ids = {f"g{i + 1}": k for i, k in enumerate(groups)}
     summary = [
-        {"key": k, "example": e["example"], "money": e["direction"], "count": len(e["amounts"]),
-         "avg_amount": round(sum(e["amounts"]) / len(e["amounts"]), 2),
-         "months_seen": len(e["months"])}
-        for k, e in groups.items()
+        {"id": gid, "example": groups[k]["example"], "money": groups[k]["direction"],
+         "count": len(groups[k]["amounts"]),
+         "avg_amount": round(sum(groups[k]["amounts"]) / len(groups[k]["amounts"]), 2),
+         "months_seen": len(groups[k]["months"])}
+        for gid, k in ids.items()
     ]
     prompt = (
         "You label bank transactions for a budgeting app for workers with irregular pay.\n"
@@ -61,21 +69,33 @@ def label_groups(groups: dict[str, dict]) -> dict[str, dict] | None:
         "- spending: everyday purchases (gas, groceries, food, stores, subscriptions under $30)\n"
         "- ignore: transfers between own accounts, refunds, other money in that is not pay\n"
         "Also give a short friendly name (2-4 words), e.g. 'Rent', 'Truck loan', 'Paycheck - Midwest Concrete'.\n"
-        'Reply with ONLY JSON: {"labels": {"<key>": {"category": "...", "name": "..."}}}\n\n'
+        'Reply with ONLY JSON, using each group\'s id: {"labels": {"g1": {"category": "...", "name": "..."}, "g2": {...}}}\n\n'
         f"Groups:\n{json.dumps(summary)}"
     )
     try:
         r = c.chat.completions.create(
             model=CHAT_MODEL, messages=[{"role": "user", "content": prompt}],
-            max_tokens=2000, temperature=0,
+            max_tokens=3000, temperature=0,
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
-        data = _json_from(r.choices[0].message.content)
-        labels = (data or {}).get("labels", {})
-        good = {k: v for k, v in labels.items()
-                if k in groups and v.get("category") in {"income", "bill", "spending", "ignore"}}
-        return good or None
+        text = r.choices[0].message.content
+        data = _json_from(text)
+        if not data:
+            raise ValueError(f"no JSON in reply (finish_reason={r.choices[0].finish_reason}): {str(text)[:200]}")
+        labels = data.get("labels", data)   # accept a bare {"g1": ...} too
+        good = {}
+        for gid, v in labels.items():
+            key = ids.get(str(gid).strip())
+            cat = str((v or {}).get("category", "")).lower().strip()
+            if key and cat in {"income", "bill", "spending", "ignore"}:
+                good[key] = {"category": cat, "name": str(v.get("name") or groups[key]["example"])[:40]}
+        if not good:
+            raise ValueError(f"reply had no usable labels: {str(text)[:200]}")
+        LAST_AI_ERROR["label"] = None
+        return good
     except Exception as e:  # network, quota, bad JSON: fall back to rules
-        print("AI labeling failed:", e)
+        LAST_AI_ERROR["label"] = f"{type(e).__name__}: {e}"
+        print("AI labeling failed:", e, flush=True)
         return None
 
 
@@ -123,7 +143,8 @@ def plan(profile: Profile, start_balance: float, start_date: dt.date, target: fl
         try:
             return _agent_plan(c, profile, start_balance, start_date, target, base, tried)
         except Exception as e:
-            print("AI planning failed, using rules:", e)
+            LAST_AI_ERROR["plan"] = f"{type(e).__name__}: {e}"
+            print("AI planning failed, using rules:", e, flush=True)
             tried = [_brief(base)]
     return _rules_plan(profile, start_balance, start_date, target, tried)
 
@@ -147,13 +168,15 @@ def _agent_plan(c, profile, start_balance, start_date, target, base, tried) -> d
     best = None
     for _ in range(7):
         r = c.chat.completions.create(model=CHAT_MODEL, messages=msgs, tools=[TOOL],
-                                      tool_choice="auto", max_tokens=700, temperature=0.2)
+                                      tool_choice="auto", max_tokens=700, temperature=0.2,
+                                      extra_body={"chat_template_kwargs": {"enable_thinking": False}})
         m = r.choices[0].message
         if not m.tool_calls:
             text = re.sub(r"<think>.*?</think>", "", m.content or "", flags=re.S).strip()
             ok = [t for t in tried if t["shortfall_probability"] <= target]
             best = min(ok, key=lambda t: t["cut_weekly_spend"] + t["extra_weekly_income"]) if ok else \
                 min(tried, key=lambda t: t["shortfall_probability"])
+            LAST_AI_ERROR["plan"] = None
             return {"source": "ai", "tried": tried, "recommended": best, "message": text}
         msgs.append({"role": "assistant", "content": m.content or "",
                      "tool_calls": [tc.model_dump() for tc in m.tool_calls]})

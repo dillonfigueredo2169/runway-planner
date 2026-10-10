@@ -34,6 +34,23 @@ def health():
             "model": ai.CHAT_MODEL, "base_url": os.getenv("OPENAI_BASE_URL", "")}
 
 
+@app.get("/debug/ai")
+def debug_ai():
+    """Open this page to see whether the AI works and why it last fell back to rules."""
+    out = {"key_set": ai.ai_enabled(), "model": ai.CHAT_MODEL,
+           "base_url": os.getenv("OPENAI_BASE_URL", ""), "last_errors": ai.LAST_AI_ERROR}
+    c = ai.client()
+    if c:
+        try:
+            r = c.chat.completions.create(model=ai.CHAT_MODEL, max_tokens=20,
+                                          messages=[{"role": "user", "content": "Reply with just: hi"}])
+            out["test_call"] = "ok"
+            out["test_reply"] = r.choices[0].message.content
+        except Exception as e:
+            out["test_call"] = f"FAILED {type(e).__name__}: {e}"
+    return out
+
+
 def _analyze(text: str) -> dict:
     try:
         txns = parser.read_transactions(text)
@@ -51,6 +68,7 @@ def _analyze(text: str) -> dict:
     return {
         "session": sid,
         "label_source": source,
+        "label_note": ai.LAST_AI_ERROR["label"] if source == "rules" else None,
         "transactions": len(txns),
         "date_range": [txns[0]["date"].isoformat(), txns[-1]["date"].isoformat()],
         "groups": [{"example": groups[k]["example"], "count": len(groups[k]["amounts"]),
