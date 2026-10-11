@@ -162,6 +162,28 @@
     </div>
   </section>
 </div>
+  <!-- STEP 4 -->
+  <section class="card hidden" id="step4">
+    <div class="step">Step 4</div>
+    <h2>Work backwards from a savings goal</h2>
+    <p style="margin-top:-6px;color:var(--muted)">Pick an ending balance. The simulator finds the smallest extra weekly income that gets you there. Starting from <strong id="goalStart"></strong>.</p>
+    <div class="row">
+      <div class="bal">Goal $<input type="number" id="goalTarget" value="3000" min="0" step="100"></div>
+      <div class="bal">Odds
+        <select id="goalProb" style="border:0;outline:0;font:inherit;padding:9px 4px;background:transparent">
+          <option value="0.7">70%</option>
+          <option value="0.8" selected>80%</option>
+          <option value="0.9">90%</option>
+          <option value="0.95">95%</option>
+        </select>
+      </div>
+      <button id="goalBtn">Find the extra income I need</button>
+    </div>
+    <div id="err4" class="err"></div>
+    <div id="goalOut" class="hidden" style="margin-top:16px">
+      <div class="msg" id="goalMsg"></div>
+    </div>
+  </section>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -189,11 +211,7 @@ async function analyze(form, btn){
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || "Couldn't read that file");
     session = d.session; showProfile(d);
-  } catch (e) {
-    $("#err1").textContent = e.message;
-    // hide results from a previous file so they aren't mistaken for this one
-    ["#profile", "#step2", "#step3"].forEach(s => $(s).classList.add("hidden"));
-  }
+  } catch (e) { $("#err1").textContent = e.message; }
   if (btn) busy(btn, false);
 }
 $("#sampleBtn").onclick = e => { const f = new FormData(); f.append("sample", "1"); analyze(f, e.target); };
@@ -225,7 +243,7 @@ function showProfile(d){
     options: {maintainAspectRatio: false, plugins: {legend: {display: false},
       tooltip: {callbacks: {label: c => money(c.raw)}}},
       scales: {x: {ticks: {maxTicksLimit: 8}, grid: {display: false}}, y: {ticks: {callback: v => money(v)}}}}});
-  $("#simOut").classList.add("hidden"); $("#step3").classList.add("hidden");
+  $("#simOut").classList.add("hidden"); $("#step3").classList.add("hidden"); $("#step4").classList.add("hidden");
 }
 
 // ---------- Step 2 ----------
@@ -240,6 +258,8 @@ $("#simBtn").onclick = async e => {
     sims = d.results;
     selected = sims.findIndex(s => s.shortfall_probability > 0.05); if (selected < 0) selected = 0;
     renderSims(); $("#simOut").classList.remove("hidden"); $("#step3").classList.remove("hidden");
+$("#step4").classList.remove("hidden");
+$("#planOut").classList.add("hidden"); $("#goalOut").classList.add("hidden");
     $("#planOut").classList.add("hidden");
   } catch (err) { $("#err2").textContent = err.message; }
   busy(e.target, false);
@@ -258,6 +278,7 @@ function renderSims(){
   document.querySelectorAll(".res").forEach(el => el.onclick = () => { selected = +el.dataset.i; renderSims(); });
   fan("#fanChart", sims[selected]);
   $("#fanTitle").textContent = `10,000 possible futures starting at ${money(sims[selected].start_balance)}`;
+  $("#goalStart").textContent = money(sims[selected].start_balance);
   $("#planBtn").innerHTML = $("#planBtn").dataset.label = `Find the easiest safe plan for ${money(sims[selected].start_balance)}`;
 }
 
@@ -306,6 +327,31 @@ $("#planBtn").onclick = async e => {
         tooltip: {callbacks: {label: c => c.dataset.label + ": " + money(c.raw)}}},
         scales: {y: {ticks: {callback: v => money(v)}}, x: {ticks: {maxTicksLimit: 6}, grid: {display: false}}}}});
   } catch (err) { $("#err3").textContent = err.message; }
+  busy(e.target, false);
+};
+// ---------- Step 4 ----------
+$("#goalBtn").onclick = async e => {
+  $("#err4").textContent = "";
+  const s = sims[selected];
+  const target = +$("#goalTarget").value;
+  const prob = +$("#goalProb").value;
+  if (isNaN(target) || target < 0) { $("#err4").textContent = "Enter a goal of $0 or more."; return; }
+  busy(e.target, true, "Searching…");
+  try {
+    const r = await fetch("/api/goal", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({session, start_balance: s.start_balance, target_balance: target, target_probability: prob})});
+    const d = await r.json(); if (!r.ok) throw new Error(d.detail || "Search failed");
+    let text;
+    if (d.extra_weekly_income === null) {
+      text = `Even with ${money(d.max_extra_tested)}/week extra, you'd only have a ${pct(d.goal_probability_at_max)} chance of ending above ${money(target)}. Try a lower goal or lower odds.`;
+    } else if (d.extra_weekly_income === 0) {
+      text = `You're already on track: a ${pct(d.goal_probability)} chance of ending above ${money(target)} with no changes.`;
+    } else {
+      text = `To end above ${money(target)} with about a ${pct(d.goal_probability)} chance, you'd need roughly ${money(d.extra_weekly_income)} extra per week (about ${money(d.extra_weekly_income * 16)} over 16 weeks).`;
+    }
+    $("#goalMsg").textContent = text;
+    $("#goalOut").classList.remove("hidden");
+  } catch (err) { $("#err4").textContent = err.message; }
   busy(e.target, false);
 };
 </script>
