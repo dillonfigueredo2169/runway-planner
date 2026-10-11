@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from . import ai, parser  # noqa: E402
-from .engine import simulate  # noqa: E402
+from .engine import simulate, search_extra_weekly_income
 
 ROOT = Path(__file__).resolve().parent.parent
 SAMPLE = ROOT / "sample_data" / "construction_bank_export_messy.csv"
@@ -132,3 +132,18 @@ def make_plan(req: PlanReq):
                                        cut_weekly_spend=rec["cut_weekly_spend"],
                                        extra_weekly_income=rec["extra_weekly_income"])
     return out
+
+class GoalReq(BaseModel):
+    session: str
+    start_balance: float
+    target_balance: float
+    target_probability: float = 0.80
+
+
+@app.post("/api/goal")
+def goal(req: GoalReq):
+    p = _profile(req.session)
+    return search_extra_weekly_income(
+        p, req.start_balance, req.target_balance,
+        req.target_probability, start_date=dt.date.today(),
+    )
