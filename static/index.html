@@ -60,6 +60,9 @@
   .msg{background:var(--accent-soft);border-radius:12px;padding:16px 18px;font-size:17px;white-space:pre-wrap}
   .src{font-size:12px;color:var(--muted);margin-top:6px}
   tr.best td{background:var(--good-soft);font-weight:600}
+  .seg{display:inline-flex;gap:4px;border:1px solid var(--line);border-radius:12px;padding:4px;background:#fff;flex-wrap:wrap}
+  .seg .segbtn{background:transparent;color:var(--ink);border:0;padding:8px 14px;border-radius:9px}
+  .seg .segbtn.active{background:var(--ink);color:#fff}
   .hidden{display:none}
   .err{color:var(--bad);margin-top:10px}
   .legend{font-size:13px;color:var(--muted);margin-top:8px}
@@ -141,54 +144,71 @@
   <!-- STEP 3 -->
   <section class="card hidden" id="step3">
     <div class="step">Step 3</div>
-    <h2>Find me a plan</h2>
-    <p style="margin-top:-6px;color:var(--muted)">The AI runs the simulation itself, testing spending cuts and extra income until the risk of going below $0 is 5% or less, then picks the easiest option.</p>
-    <button id="planBtn">Find the easiest safe plan</button>
-    <div id="err3" class="err"></div>
-    <div id="planOut" class="hidden" style="margin-top:16px">
-      <div class="msg" id="planMsg"></div>
-      <div class="src" id="planSrc"></div>
-      <div class="grid2" style="margin-top:16px">
-        <div>
-          <h3 style="margin:4px 0 8px;font-size:16px">Options it tested</h3>
-          <table><thead><tr><th class="num">Cut spending /wk</th><th class="num">Extra income /wk</th><th class="num">Risk</th></tr></thead>
-            <tbody id="triedRows"></tbody></table>
+    <h2>What's your goal?</h2>
+    <p style="margin-top:-6px;color:var(--muted)">Starting from <strong id="goalStart"></strong> in checking.</p>
+    <div class="seg" role="tablist">
+      <button class="segbtn active" data-mode="safe">Never go below $0</button>
+      <button class="segbtn" data-mode="goal">Save up to a goal</button>
+    </div>
+
+    <!-- Goal A: stay safe (AI planner) -->
+    <div id="modeSafe" style="margin-top:16px">
+      <p style="margin-top:0;color:var(--muted)">The AI runs the simulation itself, testing spending cuts and extra income until the risk of going below $0 is 5% or less, then picks the easiest option.</p>
+      <button id="planBtn">Find the easiest safe plan</button>
+      <div id="err3" class="err"></div>
+      <div id="planOut" class="hidden" style="margin-top:16px">
+        <div class="msg" id="planMsg"></div>
+        <div class="src" id="planSrc"></div>
+        <div class="grid2" style="margin-top:16px">
+          <div>
+            <h3 style="margin:4px 0 8px;font-size:16px">Options it tested</h3>
+            <table><thead><tr><th class="num">Cut spending /wk</th><th class="num">Extra income /wk</th><th class="num">Risk</th></tr></thead>
+              <tbody id="triedRows"></tbody></table>
+          </div>
+          <div>
+            <h3 style="margin:4px 0 8px;font-size:16px">Before vs. after the plan</h3>
+            <div class="chartbox" style="height:260px"><canvas id="cmpChart"></canvas></div>
+          </div>
         </div>
-        <div>
-          <h3 style="margin:4px 0 8px;font-size:16px">Before vs. after the plan</h3>
-          <div class="chartbox" style="height:260px"><canvas id="cmpChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Goal B: reach a savings goal (search for extra weekly income) -->
+    <div id="modeGoal" class="hidden" style="margin-top:16px">
+      <p style="margin-top:0;color:var(--muted)">Pick a balance you want to end the 16 weeks with. The simulator works backwards to find the smallest extra weekly income that gets you there.</p>
+      <div class="row">
+        <div class="bal">Goal $<input type="number" id="goalTarget" value="3000" min="0" step="100"></div>
+        <div class="bal">Odds
+          <select id="goalProb" style="border:0;outline:0;font:inherit;padding:9px 4px;background:transparent">
+            <option value="0.7">70%</option>
+            <option value="0.8" selected>80%</option>
+            <option value="0.9">90%</option>
+            <option value="0.95">95%</option>
+          </select>
         </div>
+        <button id="goalBtn">Find the extra income I need</button>
+      </div>
+      <div id="err4" class="err"></div>
+      <div id="goalOut" class="hidden" style="margin-top:16px">
+        <div class="msg" id="goalMsg"></div>
+        <div class="tiles">
+          <div class="tile"><div class="k">Extra income needed</div><div class="v" id="gExtra"></div></div>
+          <div class="tile"><div class="k">Chance of hitting goal today</div><div class="v" id="gToday"></div></div>
+          <div class="tile"><div class="k">Chance with the extra income</div><div class="v" id="gPlan"></div></div>
+        </div>
+        <h3 style="margin:4px 0 8px;font-size:16px">Path to your goal</h3>
+        <div class="chartbox"><canvas id="goalChart"></canvas></div>
+        <div class="legend">Green: typical path with the extra income (shaded: middle 50% of futures). Gray dashed: typical path with no changes. Orange dashed: your goal.</div>
       </div>
     </div>
   </section>
 </div>
-  <!-- STEP 4 -->
-  <section class="card hidden" id="step4">
-    <div class="step">Step 4</div>
-    <h2>Work backwards from a savings goal</h2>
-    <p style="margin-top:-6px;color:var(--muted)">Pick an ending balance. The simulator finds the smallest extra weekly income that gets you there. Starting from <strong id="goalStart"></strong>.</p>
-    <div class="row">
-      <div class="bal">Goal $<input type="number" id="goalTarget" value="3000" min="0" step="100"></div>
-      <div class="bal">Odds
-        <select id="goalProb" style="border:0;outline:0;font:inherit;padding:9px 4px;background:transparent">
-          <option value="0.7">70%</option>
-          <option value="0.8" selected>80%</option>
-          <option value="0.9">90%</option>
-          <option value="0.95">95%</option>
-        </select>
-      </div>
-      <button id="goalBtn">Find the extra income I need</button>
-    </div>
-    <div id="err4" class="err"></div>
-    <div id="goalOut" class="hidden" style="margin-top:16px">
-      <div class="msg" id="goalMsg"></div>
-    </div>
-  </section>
 
 <script>
 const $ = s => document.querySelector(s);
 const money = v => (v < 0 ? "-$" : "$") + Math.abs(Math.round(v)).toLocaleString();
 const pct = p => (p < 0.005 && p > 0 ? "<1" : Math.round(p * 100)) + "%";
+const an = p => (/^(8|11|18)/.test(p) ? "an " : "a ") + p;   // "an 80%" vs "a 70%"
 const short = d => new Date(d + "T12:00:00").toLocaleDateString(undefined, {month: "short", day: "numeric"});
 let session = null, sims = [], selected = 0, charts = {};
 
@@ -211,7 +231,11 @@ async function analyze(form, btn){
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || "Couldn't read that file");
     session = d.session; showProfile(d);
-  } catch (e) { $("#err1").textContent = e.message; }
+  } catch (e) {
+    $("#err1").textContent = e.message;
+    // hide results from a previous file so they aren't mistaken for this one
+    ["#profile", "#step2", "#step3"].forEach(s => $(s).classList.add("hidden"));
+  }
   if (btn) busy(btn, false);
 }
 $("#sampleBtn").onclick = e => { const f = new FormData(); f.append("sample", "1"); analyze(f, e.target); };
@@ -243,7 +267,7 @@ function showProfile(d){
     options: {maintainAspectRatio: false, plugins: {legend: {display: false},
       tooltip: {callbacks: {label: c => money(c.raw)}}},
       scales: {x: {ticks: {maxTicksLimit: 8}, grid: {display: false}}, y: {ticks: {callback: v => money(v)}}}}});
-  $("#simOut").classList.add("hidden"); $("#step3").classList.add("hidden"); $("#step4").classList.add("hidden");
+  $("#simOut").classList.add("hidden"); $("#step3").classList.add("hidden");
 }
 
 // ---------- Step 2 ----------
@@ -258,9 +282,7 @@ $("#simBtn").onclick = async e => {
     sims = d.results;
     selected = sims.findIndex(s => s.shortfall_probability > 0.05); if (selected < 0) selected = 0;
     renderSims(); $("#simOut").classList.remove("hidden"); $("#step3").classList.remove("hidden");
-$("#step4").classList.remove("hidden");
-$("#planOut").classList.add("hidden"); $("#goalOut").classList.add("hidden");
-    $("#planOut").classList.add("hidden");
+    $("#planOut").classList.add("hidden"); $("#goalOut").classList.add("hidden");
   } catch (err) { $("#err2").textContent = err.message; }
   busy(e.target, false);
 };
@@ -329,7 +351,14 @@ $("#planBtn").onclick = async e => {
   } catch (err) { $("#err3").textContent = err.message; }
   busy(e.target, false);
 };
-// ---------- Step 4 ----------
+// ---------- Step 3, goal switcher ----------
+document.querySelectorAll(".segbtn").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".segbtn").forEach(x => x.classList.toggle("active", x === b));
+  $("#modeSafe").classList.toggle("hidden", b.dataset.mode !== "safe");
+  $("#modeGoal").classList.toggle("hidden", b.dataset.mode !== "goal");
+});
+
+// ---------- Step 3, savings goal (Ben's goal search) ----------
 $("#goalBtn").onclick = async e => {
   $("#err4").textContent = "";
   const s = sims[selected];
@@ -341,19 +370,39 @@ $("#goalBtn").onclick = async e => {
     const r = await fetch("/api/goal", {method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({session, start_balance: s.start_balance, target_balance: target, target_probability: prob})});
     const d = await r.json(); if (!r.ok) throw new Error(d.detail || "Search failed");
+    const today = d.baseline.goal_probability;
     let text;
     if (d.extra_weekly_income === null) {
-      text = `Even with ${money(d.max_extra_tested)}/week extra, you'd only have a ${pct(d.goal_probability_at_max)} chance of ending above ${money(target)}. Try a lower goal or lower odds.`;
+      text = `Even with ${money(d.max_extra_tested)}/week extra, you'd only have ${an(pct(d.goal_probability_at_max))} chance of ending above ${money(target)}. Try a lower goal or lower odds.`;
     } else if (d.extra_weekly_income === 0) {
-      text = `You're already on track: a ${pct(d.goal_probability)} chance of ending above ${money(target)} with no changes.`;
+      text = `You're already on track: ${an(pct(d.goal_probability))} chance of ending above ${money(target)} with no changes.`;
     } else {
-      text = `To end above ${money(target)} with about a ${pct(d.goal_probability)} chance, you'd need roughly ${money(d.extra_weekly_income)} extra per week (about ${money(d.extra_weekly_income * 16)} over 16 weeks).`;
+      const wk = Math.round(d.extra_weekly_income);
+      text = `To end above ${money(target)} with ${an(pct(d.goal_probability))} chance, you'd need about ${money(wk)} extra per week (about ${money(wk * s.weeks)} over ${s.weeks} weeks).`;
     }
     $("#goalMsg").textContent = text;
+    $("#gExtra").textContent = d.extra_weekly_income === null ? "Out of reach" : money(d.extra_weekly_income) + "/wk";
+    $("#gToday").textContent = pct(today);
+    $("#gPlan").textContent = d.with_plan ? pct(d.with_plan.goal_probability) : pct(today);
+    goalChart(d.baseline, d.with_plan, target);
     $("#goalOut").classList.remove("hidden");
   } catch (err) { $("#err4").textContent = err.message; }
   busy(e.target, false);
 };
+
+function goalChart(base, plan, target){
+  const L = base.week_labels.map(short), show = plan || base;
+  draw("#goalChart", {type: "line", data: {labels: L, datasets: [
+    {data: show.fan.p25, borderWidth: 0, pointRadius: 0, fill: false},
+    {data: show.fan.p75, borderWidth: 0, pointRadius: 0, fill: "-1", backgroundColor: "rgba(47,125,79,.18)"},
+    {label: plan ? "With extra income: typical" : "Typical", data: show.fan.p50, borderColor: "#2f7d4f", borderWidth: 2.5, pointRadius: 0},
+    {label: "No changes: typical", data: base.fan.p50, borderColor: "#8a847a", borderWidth: 2, borderDash: [6, 4], pointRadius: 0, hidden: !plan},
+    {label: "Goal", data: L.map(() => target), borderColor: "#c2581d", borderWidth: 2, borderDash: [3, 4], pointRadius: 0},
+  ]}, options: {maintainAspectRatio: false, interaction: {mode: "index", intersect: false},
+    plugins: {legend: {labels: {boxWidth: 12, filter: i => i.datasetIndex >= 2 && !(i.datasetIndex === 3 && !plan)}},
+      tooltip: {filter: c => c.datasetIndex >= 2, callbacks: {label: c => c.dataset.label + ": " + money(c.raw)}}},
+    scales: {y: {ticks: {callback: v => money(v)}}, x: {ticks: {maxTicksLimit: 9}, grid: {display: false}}}}});
+}
 </script>
 </body>
 </html>
