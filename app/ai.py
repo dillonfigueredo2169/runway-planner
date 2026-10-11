@@ -129,6 +129,95 @@ def _run(profile, start_balance, start_date, cut, extra):
     return simulate(profile, start_balance, start_date, cut_weekly_spend=cut, extra_weekly_income=extra)
 
 
+def search_savings_goal(
+    profile: Profile,
+    start_balance: float,
+    target_balance: float,
+    target_probability: float = 0.80,
+    start_date: dt.date | None = None,
+    weeks: int = 16,
+    n: int = 10_000,
+    max_extra_weekly_income: float = 2_000,
+    seed: int = 7,
+) -> dict:
+    """Find extra weekly income needed to reach a savings goal."""
+
+    if target_balance < 0:
+        raise ValueError("Target balance cannot be negative.")
+    if not 0 < target_probability <= 1:
+        raise ValueError("Target probability must be in (0, 1].")
+    if weeks < 1 or n < 1:
+        raise ValueError("Weeks and simulations must be positive.")
+    if max_extra_weekly_income < 0:
+        raise ValueError("Maximum extra income cannot be negative.")
+
+    def evaluate(extra_income: float) -> float:
+        result = simulate(
+            profile=profile,
+            start_balance=start_balance,
+            start_date=start_date,
+            weeks=weeks,
+            n=n,
+            extra_weekly_income=extra_income,
+            seed=seed,
+            target_balance=target_balance,
+        )
+        return result["goal_probability"]
+
+    # Check whether the goal is already achievable.
+    base_probability = evaluate(0)
+
+    if base_probability >= target_probability:
+        return {
+            "target_balance": target_balance,
+            "target_probability": target_probability,
+            "baseline_probability": base_probability,
+            "extra_weekly_income": 0.0,
+            "achieved_probability": base_probability,
+            "status": "already_reaches_goal",
+        }
+
+    # Check whether the search limit is sufficient.
+    max_probability = evaluate(max_extra_weekly_income)
+
+    if max_probability < target_probability:
+        return {
+            "target_balance": target_balance,
+            "target_probability": target_probability,
+            "baseline_probability": base_probability,
+            "max_extra_weekly_income": max_extra_weekly_income,
+            "probability_at_max": max_probability,
+            "extra_weekly_income": None,
+            "status": "goal_not_reached_within_limit",
+        }
+
+    # Binary search for the minimum additional weekly income.
+    low, high = 0.0, max_extra_weekly_income
+
+    for _ in range(30):
+        mid = (low + high) / 2
+        if evaluate(mid) >= target_probability:
+            high = mid
+        else:
+            low = mid
+
+    extra = round(high, 2)
+    achieved = evaluate(extra)
+
+    return {
+        "target_balance": target_balance,
+        "target_probability": target_probability,
+        "baseline_probability": base_probability,
+        "extra_weekly_income": extra,
+        "achieved_probability": achieved,
+        "status": (
+            "goal_reached"
+            if achieved >= target_probability
+            else "threshold_not_confirmed"
+        ),
+    }
+
+
 def plan(profile: Profile, start_balance: float, start_date: dt.date, target: float = 0.05) -> dict:
     base = _run(profile, start_balance, start_date, 0, 0)
     tried = [_brief(base)]
